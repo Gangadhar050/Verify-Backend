@@ -1,6 +1,7 @@
 
 package com.verify_x.services;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,6 +10,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+
+import java.net.URI;
 
 @Service
 public class ZeroBounceEmailVerifier {
@@ -22,75 +25,80 @@ public class ZeroBounceEmailVerifier {
     @Value("${zerobounce.api-key:}")
     private String apiKey;
 
-    public ZeroBounceEmailVerifier(
-            ObjectMapper objectMapper) {
+    public ZeroBounceEmailVerifier(ObjectMapper objectMapper) {
         this.restTemplate = new RestTemplate();
         this.objectMapper = objectMapper;
     }
 
     public boolean isValidMailbox(String email) {
-
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalStateException(
+            throw new EmailVerificationServiceException(
                     "Email verification service is not configured."
             );
         }
 
-        String url = UriComponentsBuilder
+        URI uri = UriComponentsBuilder
                 .fromUriString(API_URL)
                 .queryParam("api_key", apiKey)
                 .queryParam("email", email)
                 .queryParam("timeout", 10)
+                .build()
                 .encode()
-                .toUriString();
+                .toUri();
 
         final String response;
 
         try {
-            response = restTemplate.getForObject(
-                    url, String.class);
+            response = restTemplate.getForObject(uri, String.class);
         } catch (RestClientException ex) {
-            throw new IllegalStateException(
+            throw new EmailVerificationServiceException(
                     "Email verification service is temporarily unavailable.",
                     ex
             );
         }
 
-        try {
-            JsonNode json = objectMapper.readTree(response);
-
-            if (json.has("error")) {
-                throw new IllegalStateException(
-                        "Email verification service returned an error."
-                );
-            }
-
-            String status = json.path("status")
-                    .asText("unknown");
-
-            if ("valid".equalsIgnoreCase(status)) {
-                return true;
-            }
-
-            if ("invalid".equalsIgnoreCase(status)
-                    || "spamtrap".equalsIgnoreCase(status)
-                    || "abuse".equalsIgnoreCase(status)
-                    || "do_not_mail".equalsIgnoreCase(status)) {
-                return false;
-            }
-
-            // Includes unknown and catch-all:
-            // do not send an OTP when verification is inconclusive.
-            throw new IllegalStateException(
-                    "Email address could not be verified. "
-                            + "Please try again with another address."
+        if (response == null || response.isBlank()) {
+            throw new EmailVerificationServiceException(
+                    "Email verification service returned an empty response."
             );
+        }
 
-        } catch (com.fasterxml.jackson.core.JsonProcessingException ex) {
-            throw new IllegalStateException(
+        final JsonNode json;
+
+        try {
+            json = objectMapper.readTree(response);
+        } catch (JsonProcessingException ex) {
+            throw new EmailVerificationServiceException(
                     "Invalid response from email verification service.",
                     ex
             );
+        }
+
+        if (json.has("error") && !json.get("error").isNull()) {
+            // Do not log or return the raw response: it may contain
+            // sensitive request details.
+            throw new EmailVerificationServiceException(
+                    "Email verification provider rejected the request. "
+                            + "Check the API key, account access, and request parameters."
+            );
+        }
+
+        String status = json.path("status").asText("unknown");
+
+        switch (status.toLowerCase()) {
+            case "valid":
+                return true;
+
+            case "invalid":
+            case "spamtrap":
+            case "abuse":
+            case "do_not_mail":
+                return false;
+
+            default:
+                throw new EmailVerificationServiceException(
+                        "The email address could not be verified conclusively."
+                );
         }
     }
 }

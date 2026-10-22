@@ -2,6 +2,7 @@ package com.verify_x.exception;
 
 import com.verify_x.payload.ApiResponse;
 import com.verify_x.payload.ErrorResponse;
+import com.verify_x.services.EmailVerificationServiceException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -174,4 +175,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
                 .body(new ErrorResponse(ex.getMessage()));
     }
+
+    @ExceptionHandler(EmailVerificationServiceException.class)
+    public ResponseEntity<Map<String, Object>> handleEmailVerificationService(
+            EmailVerificationServiceException ex) {
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", 503);
+        response.put("message",
+                "Email verification is temporarily unavailable. Please try again later.");
+
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(response);
+    }
+
 }
