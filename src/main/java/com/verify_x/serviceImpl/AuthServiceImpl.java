@@ -58,7 +58,7 @@ public class AuthServiceImpl implements AuthService {
 
     private final EmailDomainValidator emailDomainValidator;
 
-    private final ZeroBounceEmailVerifier zeroBounceEmailVerifier;
+//    private final ZeroBounceEmailVerifier zeroBounceEmailVerifier;
 
 
     @Override
@@ -81,11 +81,11 @@ public class AuthServiceImpl implements AuthService {
 
         email = email.trim();
 
-        if (!zeroBounceEmailVerifier.isValidMailbox(email)) {
-            throw new IllegalArgumentException(
-                    "Please enter a valid email address."
-            );
-        }
+//        if (!zeroBounceEmailVerifier.isValidMailbox(email)) {
+//            throw new IllegalArgumentException(
+//                    "Please enter a valid email address."
+//            );
+//        }
         // 2. Validate domain mail records
         if (!emailDomainValidator.hasMailDomain(email)) {
             throw new IllegalArgumentException(
