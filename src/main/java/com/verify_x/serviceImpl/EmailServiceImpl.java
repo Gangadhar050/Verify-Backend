@@ -245,45 +245,47 @@ private String calendarTimeZone;
         }
     }
 
+
     @Override
     public void sendOtp(String email, String otp) {
 
-        if (failOpen) {
-            System.out.println("[VerifyX LOCAL OTP BACKUP] " + email + " -> " + otp);
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Recipient email is required."
+            );
+        }
+
+        if (otp == null || otp.isBlank()) {
+            throw new IllegalArgumentException(
+                    "OTP is required."
+            );
         }
 
         if (fromEmail == null || fromEmail.isBlank()) {
-            System.out.println("[VerifyX LOCAL OTP] " + email + " -> " + otp);
-            return;
+            throw new IllegalStateException(
+                    "Email sender is not configured."
+            );
         }
 
         String subject = "VerifyX | OTP Verification";
 
         String body = """
-                <html>
-                <body>
-
-                <h2>Hello,</h2>
-
-                <p>Your OTP for VerifyX is:</p>
-
-                <h3>%s</h3>
-
-                <br>
-
-                <p>Please use this OTP to complete your verification process.</p>
-
-                <br>
-
+            <html>
+            <body style="font-family: Arial, sans-serif;">
+                <h2>VerifyX Email Verification</h2>
+                <p>Your verification OTP is:</p>
+                <h2>%s</h2>
+                <p>This OTP expires in 10 minutes.</p>
+                <p>If you did not request this, please ignore this email.</p>
                 <b>VerifyX Team</b>
+            </body>
+            </html>
+            """.formatted(otp);
 
-                </body>
-                </html>
-                """
-                .formatted(otp);
-
-        sendHtmlMail(email, subject, body);
+        // sendHtmlMail throws an exception on immediate mail errors.
+        sendHtmlMail(email.trim(), subject, body);
     }
+
 
     @Override
     public void sendInterviewSlotsEmail(

@@ -14,11 +14,7 @@ import com.verify_x.jwt.TokenBlacklist;
 import com.verify_x.jwt.UserPrincipal;
 import com.verify_x.repository.AdminRepository;
 import com.verify_x.repository.CandidateRepository;
-import com.verify_x.services.AuthService;
-import com.verify_x.services.CandidateService;
-import com.verify_x.services.EmailService;
-import com.verify_x.services.PendingRegistrationService;
-import com.verify_x.services.EmailDomainValidator;
+import com.verify_x.services.*;
 import jakarta.transaction.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -62,48 +58,65 @@ public class AuthServiceImpl implements AuthService {
 
     private final EmailDomainValidator emailDomainValidator;
 
+    private final ZeroBounceEmailVerifier zeroBounceEmailVerifier;
+
 
     @Override
     public String register(UserRegistrationDto dto) {
 
-        log.info("Registering candidate: {}", dto.getEmail());
-
-        // 1. Check whether email already exists
-        if (candidateRepository.existsByEmail(dto.getEmail())
-                || pendingRegistrationService.existsByEmail(dto.getEmail())) {
-
-            throw new EmailAlreadyExistsException("Email already exists.");
+        if (dto == null) {
+            throw new IllegalArgumentException(
+                    "Registration details are required."
+            );
         }
 
-        // 2. Check whether phone number already exists
+        // 1. Validate email format
+        String email = dto.getEmail();
+
+        if (!emailDomainValidator.isValidFormat(email)) {
+            throw new IllegalArgumentException(
+                    "Please enter a valid email address."
+            );
+        }
+
+        email = email.trim();
+
+        if (!zeroBounceEmailVerifier.isValidMailbox(email)) {
+            throw new IllegalArgumentException(
+                    "Please enter a valid email address."
+            );
+        }
+        // 2. Validate domain mail records
+        if (!emailDomainValidator.hasMailDomain(email)) {
+            throw new IllegalArgumentException(
+                    "Email domain cannot receive email."
+            );
+        }
+
+        // 3. Check duplicate email
+        if (candidateRepository.existsByEmail(email)
+                || pendingRegistrationService.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(
+                    "Email already exists."
+            );
+        }
+
+        // 4. Check duplicate phone number
         if (candidateRepository.existsByPhoneNumber(dto.getPhoneNumber())
                 || pendingRegistrationService.existsByPhoneNumber(
                 dto.getPhoneNumber())) {
-
             throw new UserAlreadyExistsException(
                     "Phone number already exists."
             );
         }
 
-        // 3. Validate email domain BEFORE generating or sending OTP
-        boolean validDomain =
-                emailDomainValidator.hasMailDomain(dto.getEmail());
-
-        if (!validDomain) {
-            throw new IllegalArgumentException(
-                    "Email domain is invalid or cannot receive email. "
-                            + "Please check your email address."
-            );
-        }
-
-        // 4. Generate OTP only after the domain check passes
+        // 5. Generate OTP
         String emailOtp = generateOtp();
-        String mobileOtp = generateOtp();
 
-        // 5. Create pending registration
+        // 6. Save pending registration
         PendingRegistration pending = PendingRegistration.builder()
                 .username(dto.getUsername())
-                .email(dto.getEmail())
+                .email(email)
                 .phoneNumber(dto.getPhoneNumber())
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .appliedRole(dto.getAppliedRole().name())
@@ -112,16 +125,18 @@ public class AuthServiceImpl implements AuthService {
                 .otpExpiresAt(LocalDateTime.now().plusMinutes(10))
                 .build();
 
-        // 6. Save pending registration
         pendingRegistrationService.save(pending);
 
-        // 7. Send OTP only after successful domain validation
-        emailService.sendOtp(dto.getEmail(), emailOtp);
+        // 7. Send OTP
+        // If sending fails immediately, the exception propagates.
+        emailService.sendOtp(email, emailOtp);
 
-        log.info("Registration OTP sent to: {}", dto.getEmail());
+        log.info("Registration OTP requested for delivery.");
 
-        return "OTP sent to email. Verify the OTP to complete registration.";
+        return "OTP sent. Please check your email.";
     }
+
+
 
 
     @Override
