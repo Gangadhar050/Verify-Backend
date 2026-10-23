@@ -156,9 +156,7 @@ public class AuthController {
             @Valid @RequestBody ForgotPasswordRequestDto request) {
 
         String response =
-                authService.initiatePasswordReset(
-                        request.getEmail()
-                );
+                authService.initiatePasswordReset(request.getEmail());
 
         return ResponseEntity.ok(
                 ApiResponse.<String>builder()
