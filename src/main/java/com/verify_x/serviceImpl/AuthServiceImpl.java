@@ -412,13 +412,23 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    public String initiatePasswordReset(
-            String email) {
+    public String initiatePasswordReset(String email) {
 
+        // Step 1: Validate email format first
+        if (!emailDomainValidator.isValidFormat(email)) {
+            throw new IllegalArgumentException(
+                    "Please enter a valid email address."
+            );
+        }
+
+        // Step 2: Normalize email
+        email = email.trim();
+
+        // Step 3: Check whether the account exists
         Candidate candidate =
                 candidateRepository
-                        .findByEmail(
-                                email).orElseThrow(() ->
+                        .findByEmail(email)
+                        .orElseThrow(() ->
                                 new UsernameNotFoundException(
                                         "User not found."));
 
