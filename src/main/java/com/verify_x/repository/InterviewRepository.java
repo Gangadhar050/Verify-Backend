@@ -16,6 +16,6 @@ public interface InterviewRepository
     Optional<Interview> findByCandidate(Candidate candidate);
 
     Optional<Interview> findByCandidateId(Long candidateId);
-
+    void deleteByCandidate(Candidate candidate);
     List<Interview> findByInterviewStatus(InterviewStatus interviewStatus);
 }

@@ -24,10 +24,7 @@ import com.verify_x.enums.VerificationStatus;
 import com.verify_x.exception.BadRequestException;
 import com.verify_x.exception.ResourceNotFoundException;
 
-import com.verify_x.repository.CandidateDocumentRepository;
-import com.verify_x.repository.CandidateRepository;
-import com.verify_x.repository.EducationRepository;
-import com.verify_x.repository.EmploymentRepository;
+import com.verify_x.repository.*;
 
 import com.verify_x.services.CandidateManagementService;
 import com.verify_x.services.EmailService;
@@ -65,7 +62,9 @@ public class CandidateManagementServiceImpl
     private final EmailService emailService;
 
     private final InterviewSlotService interviewSlotService;
+    private final InterviewRepository interviewRepository;
 
+    private final InterviewSlotRepository interviewSlotRepository;
 
     //map candidate entity to summary dto
     private CandidateSummaryDto mapToSummary(
@@ -167,26 +166,41 @@ public class CandidateManagementServiceImpl
     }
 
 
-   //search candidates by keyword
     @Override
-    public List<CandidateSummaryDto> searchCandidates(
-            String keyword) {
+    @Transactional
+    public List<CandidateSummaryDto> searchCandidates(String keyword) {
 
-        if (keyword == null ||
-                keyword.trim().isEmpty()) {
-
+        if (keyword == null || keyword.trim().isEmpty()) {
             return getAllCandidates();
         }
 
-        String searchKeyword =
-                keyword.trim();
+        String searchKeyword = keyword.trim();
 
-        return candidateRepository
-                .findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCase(
-                        searchKeyword,
-                        searchKeyword
-                )
-                .stream()
+        List<Candidate> candidates =
+                candidateRepository
+                        .findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrPhoneNumberContaining(
+                                searchKeyword,
+                                searchKeyword,
+                                searchKeyword
+                        );
+
+        // Also support searching by candidate ID
+        try {
+            Long candidateId = Long.parseLong(searchKeyword);
+
+            candidateRepository.findById(candidateId)
+                    .ifPresent(candidate -> {
+                        if (candidates.stream()
+                                .noneMatch(c -> c.getId().equals(candidateId))) {
+                            candidates.add(candidate);
+                        }
+                    });
+
+        } catch (NumberFormatException ignored) {
+            // Keyword is not a numeric candidate ID
+        }
+
+        return candidates.stream()
                 .map(this::mapToSummary)
                 .toList();
     }
@@ -436,36 +450,35 @@ public class CandidateManagementServiceImpl
 
 
     @Override
-    public void deleteCandidate(
-            Long candidateId) {
+    @Transactional
+    public void deleteCandidate(Long candidateId) {
 
-        Candidate candidate =
-                candidateRepository
-                        .findById(candidateId)
-                        .orElseThrow(
-                                () -> new ResourceNotFoundException(
-                                        "Candidate",
-                                        candidateId ));
+        Candidate candidate = candidateRepository.findById(candidateId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Candidate", candidateId));
 
+        // Delete interview first because it may reference a selected slot
+        interviewRepository.deleteByCandidate(candidate);
 
-        candidateDocumentRepository
-                .findByCandidate(candidate)
-                .forEach(
-                        candidateDocumentRepository::delete);
+        // Delete candidate-specific interview slots
+        interviewSlotRepository.deleteByCandidate(candidate);
 
+        // Delete uploaded documents
+//        candidateDocumentRepository.deleteByCandidate(candidate);
 
-        employmentRepository
-                .findByCandidate(candidate)
-                .ifPresent(
-                        employmentRepository::delete);
+        // Delete employment
+        employmentRepository.findByCandidate(candidate)
+                .ifPresent(employmentRepository::delete);
 
+        // Delete education
+        educationRepository.findByCandidate(candidate)
+                .ifPresent(educationRepository::delete);
+
+        // Delete candidate and its remaining cascaded records
         candidateRepository.delete(candidate);
 
-
-        log.info(
-                "Candidate {} deleted by HR.",
-                candidateId
-        );
+        log.info("Candidate {} deleted by HR", candidateId);
     }
 
 
@@ -711,30 +724,27 @@ public class CandidateManagementServiceImpl
         try {
 
             switch (dto.getStatus()) {
+
                 case APPROVED -> {
 
                     if (dto.getInterviewSlots() == null ||
                             dto.getInterviewSlots().isEmpty()) {
 
                         throw new BadRequestException(
-                                "At least one interview slot is required when approving a candidate."
-                        );
+                                "At least one interview slot is required.");
                     }
 
-                    // 1. Save HR-provided interview slots in database as AVAILABLE
                     interviewSlotService.createInterviewSlots(
                             candidateId,
                             dto.getInterviewSlots()
                     );
 
-                    // 2. Send approval email with “Select Interview Slot” button
                     emailService.sendApplicationApprovedEmail(
                             candidate.getEmail(),
                             candidate.getUsername(),
                             dto.getRemarks()
                     );
 
-                    // 3. Send interview time slots and .ics calendar attachment
                     emailService.sendInterviewSlotsEmail(
                             candidate.getEmail(),
                             candidate.getUsername(),
@@ -742,84 +752,37 @@ public class CandidateManagementServiceImpl
                     );
                 }
 
-                case REJECTED ->
-
-                        emailService
-                                .sendApplicationRejectedEmail(
-                                        candidate.getEmail(),
-                                        candidate.getUsername(),
-                                        dto.getRemarks());
-
+                case REJECTED -> emailService.sendApplicationRejectedEmail(
+                        candidate.getEmail(),
+                        candidate.getUsername(),
+                        dto.getRemarks()
+                );
 
                 case RE_UPLOAD_REQUIRED ->
+                        emailService.sendReUploadRequestEmail(
+                                candidate.getEmail(),
+                                candidate.getUsername(),
+                                dto.getRemarks()
+                        );
 
-                        emailService
-                                .sendReUploadRequestEmail(
-                                        candidate.getEmail(),
-                                        candidate.getUsername(),
-                                        dto.getRemarks());
-
-
-                default -> {
-                    // No email required.
-                }
+                default -> log.info(
+                        "Application status updated for candidate {}",
+                        candidateId
+                );
             }
 
-        } catch (Exception mailException) {
+        } catch (Exception ex) {
 
-            log.warn(
-                    "Application status updated for candidate {}, but email notification failed: {}",
+            log.error(
+                    "BGV approval failed for candidate ID: {}. Reason: {}",
                     candidateId,
-                    mailException.getMessage()
+                    ex.getMessage(),
+                    ex
             );
+
+            throw ex;
         }
-
-
-        log.info(
-                "Application status for candidate {} set to {} by {}",
-                candidateId,
-                dto.getStatus(),
-                reviewedBy
-        );
     }
 
 
-   //internal application ststua update
-//    private void updateApplicationStatus(
-//            Candidate candidate) {
-//
-//        List<CandidateDocument> documents =
-//                candidateDocumentRepository
-//                        .findByCandidate(candidate);
-//
-//        boolean rejected =
-//                documents.stream()
-//                        .anyMatch(
-//                                document ->
-//                                        document.getStatus()
-//                                                == DocumentStatus.REJECTED);
-//        boolean pending =
-//                documents.stream()
-//                        .anyMatch(
-//                                document ->
-//                                        document.getStatus()
-//                                                == DocumentStatus.PENDING);
-//
-//        if (rejected) {
-//
-//            candidate.setApplicationStatus(
-//                    ApplicationStatus.RE_UPLOAD_REQUIRED);
-//
-//        } else if (pending) {
-//
-//            candidate.setApplicationStatus(
-//                    ApplicationStatus.PENDING_VERIFICATION);
-//
-//        } else {
-//
-//            candidate.setApplicationStatus(
-//                    ApplicationStatus.DOCUMENTS_VERIFIED);
-//        }
-//        candidateRepository.save(candidate);
-//    }
 }

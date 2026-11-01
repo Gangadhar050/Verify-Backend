@@ -58,4 +58,5 @@ public interface InterviewSlotRepository
     boolean existsBySlotDateTime(
             LocalDateTime slotDateTime
     );
+    void deleteByCandidate(Candidate candidate);
 }

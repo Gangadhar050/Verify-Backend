@@ -18,8 +18,10 @@ import com.verify_x.exception.ResourceNotFoundException;
 import com.verify_x.jwt.UserPrincipal;
 import com.verify_x.repository.CandidateDocumentRepository;
 import com.verify_x.repository.CandidateRepository;
+import com.verify_x.repository.EmploymentRepository;
 import com.verify_x.services.CandidateDocumentService;
-
+import com.verify_x.entity.Employment;
+import com.verify_x.enums.EmploymentStatus;
 import jakarta.transaction.Transactional;
 
 import lombok.RequiredArgsConstructor;
@@ -50,7 +52,7 @@ public class CandidateDocumentServiceImpl
     private final CandidateDocumentRepository
             candidateDocumentRepository;
 
-
+private  final EmploymentRepository employmentRepository;
     private static final long MAX_FILE_SIZE =
             5L * 1024L * 1024L;
 
@@ -233,47 +235,46 @@ public class CandidateDocumentServiceImpl
     // =========================================================
     // VALIDATE DOCUMENT TYPE
     // =========================================================
-
     private void validateDocumentType(
             Candidate candidate,
             DocumentType documentType) {
 
-        /*
-         * Passport and Visa are optional travel documents.
-         *
-         * They are allowed for every candidate type.
-         */
-        if (TRAVEL_DOCUMENTS.contains(
-                documentType)) {
+        // Passport and visa are optional for everyone
+        if (TRAVEL_DOCUMENTS.contains(documentType)) {
+            return;
+        }
+
+        if (candidate.getCandidateType() == CandidateType.FRESHER) {
+
+            if (!FRESHER_DOCUMENTS.contains(documentType)) {
+                throw new BadRequestException(
+                        documentType + " is not applicable to freshers");
+            }
 
             return;
         }
 
-
-        Set<DocumentType> allowedDocuments;
-
-
-        if (candidate.getCandidateType()
-                == CandidateType.FRESHER) {
-
-            allowedDocuments =
-                    FRESHER_DOCUMENTS;
-
-        } else {
-
-            allowedDocuments =
-                    EXPERIENCED_DOCUMENTS;
+        if (!EXPERIENCED_DOCUMENTS.contains(documentType)) {
+            throw new BadRequestException(
+                    documentType + " is not allowed for experienced candidates");
         }
 
+        // Experience and relieving letters are only applicable
+        // when the candidate is no longer currently employed.
+        if (documentType == DocumentType.EXPERIENCE_LETTER ||
+                documentType == DocumentType.RELIEVING_LETTER) {
 
-        if (!allowedDocuments.contains(
-                documentType)) {
+            Employment employment = employmentRepository
+                    .findByCandidate(candidate)
+                    .orElse(null);
 
-            throw new BadRequestException(
-                    documentType +
-                            " is not allowed for " +
-                            candidate.getCandidateType() +
-                            " candidate.");
+            if (employment == null ||
+                    employment.getEmploymentStatus() ==
+                            EmploymentStatus.CURRENTLY_EMPLOYED) {
+
+                throw new BadRequestException(
+                        "Experience Letter and Relieving Letter are not required for currently employed candidates.");
+            }
         }
     }
 

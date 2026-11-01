@@ -37,7 +37,7 @@ private String calendarTimeZone;
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.frontend.application-url:http://localhost:5173/candidate}")
+    @Value("${app.frontend.application-url:http://localhost:5173/candidate/login}")
     private String applicationUrl;
 
     @Value("${app.frontend.interview-url:http://localhost:5173/candidate/interview}")

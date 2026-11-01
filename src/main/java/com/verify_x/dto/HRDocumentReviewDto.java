@@ -25,7 +25,7 @@ public class HRDocumentReviewDto {
     private ApplicationStatus applicationStatus;
 
     private String panNumber;
-
+    private String aadhaarNumber;
     private String uanNumber;
 
     private String holdingOfferLetter;
