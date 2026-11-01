@@ -39,8 +39,10 @@ public class UserRegistrationDto {
     private String email;
 
     @NotBlank(message = "Phone number is required")
-    @Pattern( regexp = "^\\d{10}$",
-              message = "Phone number must contain exactly 10 digits")
+    @Pattern(
+            regexp = "^[6-9][0-9]{9}$",
+            message = "Please enter a valid Indian mobile number (10 digits starting with 6-9)"
+    )
     private String phoneNumber;
 
 

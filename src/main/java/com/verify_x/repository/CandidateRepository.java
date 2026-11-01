@@ -42,6 +42,21 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
     long countByCandidateType(CandidateType candidateType);
 
     long countByApplicationStatus(ApplicationStatus applicationStatus);
+
+    List<Candidate>
+    findByUsernameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrPhoneNumberContaining(
+            String username,
+            String email,
+            String phoneNumber
+    );
+
+    boolean existsByPhoneNumberAndIdNot(
+            String phoneNumber,
+            Long id
+    );
+    boolean existsByPanNumberAndIdNot(String panNumber, Long id);
+
+    boolean existsByAadhaarNumberAndIdNot(String aadhaarNumber, Long id);
 }
 
 

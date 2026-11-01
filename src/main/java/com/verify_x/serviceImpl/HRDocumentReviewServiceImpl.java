@@ -151,7 +151,7 @@ public class HRDocumentReviewServiceImpl implements HRDocumentReviewService {
                 .panNumber(candidate.getPanNumber())
 
                 .uanNumber(employment != null ? employment.getUanNumber() : null)
-
+                .aadhaarNumber(candidate.getAadhaarNumber())
                 .holdingOfferLetter(holdingOfferLetter)
 
                 .uanVerified(employment != null &&

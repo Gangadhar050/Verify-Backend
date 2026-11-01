@@ -25,8 +25,8 @@ public class CandidateProfileDto {
     private String email;
 
     @Pattern(
-            regexp = "^\\d{10}$",
-            message = "Invalid Mobile Number"
+            regexp = "^[6-9][0-9]{9}$",
+            message = "Please enter a valid Indian mobile number"
     )
     private String phoneNumber;
 
